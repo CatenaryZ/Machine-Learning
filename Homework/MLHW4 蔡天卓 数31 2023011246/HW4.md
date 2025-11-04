@@ -134,21 +134,6 @@ $$
 ---
 
 ![](MLHW5.2.png)
-#### 2 模型评估
-
-- 计算模型 \( p(y|x) \) 的最优决策，损失函数为 \( L(y, a) = |y - a| \)，其中 \( a \) 是行动，\( y \) 是真实值。
-
-- 使用交叉验证方法评估回归模型。数据来自 https://archive.ics.uci.edu/dataset/9/auto+mpg，使用岭回归。通过交叉验证确定最佳超参数。
-
-- 使用随机森林和梯度提升方法（可能需要单独下载 XGBoost 包）对数据集 https://archive.ics.uci.edu/dataset/222/bank+marketing 进行分类。报告参数并比较结果。
-
-- 计算以下两个模型的证据，并使用结果比较模型。 \( H_0 \) 是均匀分布，概率为  
-\[p(x|H_0) = \frac{1}{2}, \quad x \in (-1, 1)\]  
-模型 \( H_1 \) 是一个非均匀分布，有一个未知参数 \( m \in (-1, 1) \):  
-\[p(x|m, H_1) = \frac{1}{2}(1 + mx), \quad x \in (-1, 1)\]  
-给定数据 \( D = (0.3, 0.5, 0.7, 0.8, 0.9) \)，计算 \( H_0 \) 和 \( H_1 \) 的证据。
-
----
 
 #### T2.1
 
@@ -173,277 +158,378 @@ $$
 
 使用莱布尼茨积分法则：
 $$
-f'(a) = \int_{-\infty}^{a} f(x) dx - \int_{a}^{\infty} f(x) dx
+f'(a) = \int_{-\infty}^{a} f(x) dx - \int_{a}^{\infty} f(x) dx = F(a) - [1 - F(a)] = 2F(a) - 1
 $$
 
-即：
-$$
-f'(a) = F(a) - [1 - F(a)] = 2F(a) - 1
-$$
+上式关于 $a$ 单调不减, 故当 $f(a)$ 取到最大值时, $F(a) = \frac{1}{2}$ , 即 $a$ 为中位数
 
-### 4. 寻找临界点
-令 f'(a) = 0：
-$$
-2F(a) - 1 = 0 \Rightarrow F(a) = \frac{1}{2}
-$$
+#### T2.2
 
-根据中位数的定义，满足 F(m) = 1/2 的 m 就是中位数。
-
-### 5. 验证最小值
-求二阶导数：
-$$
-f''(a) = 2f(a) \geq 0
-$$
-
-由于概率密度函数 f(x) ≥ 0，所以 f''(a) ≥ 0，表明 f(a) 是凸函数，临界点即为全局最小值点。
-
-## 结论
-我们证明了对于连续型随机变量 X，中位数 m 是函数 f(a) = E|X-a| 的最小化器。这个结果表明中位数是使期望绝对偏差最小的点，而均值是使期望平方偏差最小的点。
-
----
-
-#### 第二部分：交叉验证评估回归模型（岭回归）
-
-使用 Auto MPG 数据集，通过交叉验证选择岭回归的最佳超参数 \( \alpha \)。以下是 Python 代码实现：
+代码如下: 
 
 ```python
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import Ridge
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error
+import pandas as pd
+from ucimlrepo import fetch_ucirepo 
+from sklearn.model_selection import train_test_split
 
 # 加载数据
-url = "https://archive.ics.uci.edu/ml/machine-learning-databases/auto-mpg/auto-mpg.data"
-column_names = ['mpg', 'cylinders', 'displacement', 'horsepower', 'weight', 'acceleration', 'model_year', 'origin', 'car_name']
-data = pd.read_csv(url, delim_whitespace=True, names=column_names, na_values='?')
+auto_mpg = fetch_ucirepo(id=9) 
+X = auto_mpg.data.features 
+y = auto_mpg.data.targets 
 
 # 处理缺失值
-data = data.dropna()
+X = X.dropna()
+y = y.loc[X.index]
 
-# 选择特征和目标
-X = data[['cylinders', 'displacement', 'horsepower', 'weight', 'acceleration', 'model_year', 'origin']]
-y = data['mpg']
+# 选择数值型特征
+numerical_features = ['cylinders', 'displacement', 'horsepower', 'weight', 'acceleration', 'model_year', 'origin']
+X = X[numerical_features]
+
+# 转换为numpy数组
+X = X.values
+y = y.values.flatten()
 
 # 分割数据
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# 标准化特征
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+# 标准化函数
+def standardize(X):
+    mean = np.mean(X, axis=0)
+    std = np.std(X, axis=0)
+    return (X - mean) / std, mean, std
 
-# 岭回归交叉验证
-param_grid = {'alpha': [0.01, 0.1, 1, 10, 100]}
-ridge = Ridge()
-grid_search = GridSearchCV(ridge, param_grid, cv=5, scoring='neg_mean_squared_error')
-grid_search.fit(X_train_scaled, y_train)
+# 岭回归
+class RidgeRegression:
+    def __init__(self, alpha=1.0):
+        self.alpha = alpha
+        self.weights = None
+        self.bias = None
+    
+    def fit(self, X, y):
+        # 添加偏置项
+        X_with_bias = np.column_stack([np.ones(X.shape[0]), X])
+        
+        # 岭回归闭式解: w = (X^T X + alpha * I)^(-1) X^T y
+        n_features = X_with_bias.shape[1]
+        identity_matrix = np.eye(n_features)
+        # 不对偏置项进行正则化
+        identity_matrix[0, 0] = 0
+        
+        XTX = X_with_bias.T @ X_with_bias
+        regularization = self.alpha * identity_matrix
+        XTy = X_with_bias.T @ y
+        
+        # 求解权重
+        self.weights = np.linalg.inv(XTX + regularization) @ XTy
+        self.bias = self.weights[0]
+        self.weights = self.weights[1:]
+    
+    def predict(self, X):
+        return X @ self.weights + self.bias
 
-# 最佳参数
-best_alpha = grid_search.best_params_['alpha']
-print(f"最佳超参数 alpha: {best_alpha}")
+# 交叉验证
+def cross_validate_ridge(X, y, alphas, k_folds=5):
+    n_samples = X.shape[0]
+    fold_size = n_samples // k_folds
+    
+    # 打乱数据
+    indices = np.random.permutation(n_samples)
+    X_shuffled = X[indices]
+    y_shuffled = y[indices]
+    
+    best_alpha = None
+    best_mse = float('inf')
+    
+    for alpha in alphas:
+        fold_mses = []
+        
+        for fold in range(k_folds):
+            # 划分训练集和验证集
+            val_start = fold * fold_size
+            val_end = (fold + 1) * fold_size
+            
+            X_val = X_shuffled[val_start:val_end]
+            y_val = y_shuffled[val_start:val_end]
+            
+            X_train_fold = np.concatenate([X_shuffled[:val_start], X_shuffled[val_end:]], axis=0)
+            y_train_fold = np.concatenate([y_shuffled[:val_start], y_shuffled[val_end:]], axis=0)
+            
+            # 标准化
+            X_train_scaled, mean, std = standardize(X_train_fold)
+            X_val_scaled = (X_val - mean) / std
+            
+            # 训练模型
+            model = RidgeRegression(alpha=alpha)
+            model.fit(X_train_scaled, y_train_fold)
+            
+            # 预测并计算MSE
+            y_pred = model.predict(X_val_scaled)
+            mse = np.mean((y_pred - y_val) ** 2)
+            fold_mses.append(mse)
+        
+        # 计算平均MSE
+        avg_mse = np.mean(fold_mses)
+        print(f"Alpha: {alpha}, Average MSE: {avg_mse:.4f}")
+        
+        if avg_mse < best_mse:
+            best_mse = avg_mse
+            best_alpha = alpha
+    
+    return best_alpha, best_mse
 
-# 使用最佳模型预测
-best_ridge = grid_search.best_estimator_
-y_pred = best_ridge.predict(X_test_scaled)
-mse = mean_squared_error(y_test, y_pred)
-print(f"测试集均方误差 (MSE): {mse}")
+# 标准化训练数据
+X_train_scaled, train_mean, train_std = standardize(X_train)
+X_test_scaled = (X_test - train_mean) / train_std
+
+# 定义要测试的alpha值
+alphas = [0.01, 0.1, 1, 10, 100]
+
+best_alpha, best_mse = cross_validate_ridge(X_train, y_train, alphas, k_folds=5)
+print(f"\n最佳超参数 alpha: {best_alpha}")
+print(f"交叉验证最佳MSE: {best_mse:.4f}")
+
+# 使用最佳alpha在完整训练集上训练最终模型
+final_model = RidgeRegression(alpha=best_alpha)
+final_model.fit(X_train_scaled, y_train)
+
+# 在测试集上评估
+y_pred_test = final_model.predict(X_test_scaled)
+test_mse = np.mean((y_pred_test - y_test) ** 2)
+print(f"测试集MSE: {test_mse:.4f}")
+
+# 计算R²分数
+def r2_score(y_true, y_pred):
+    ss_res = np.sum((y_true - y_pred) ** 2)
+    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+    return 1 - (ss_res / ss_tot)
+
+r2 = r2_score(y_test, y_pred_test)
+print(f"测试集R²分数: {r2:.4f}")
+
+# 显示模型系数
+print(f"\n模型系数: {final_model.weights}")
+print(f"模型偏置: {final_model.bias:.4f}")
 ```
 
-**输出结果：**
+输出结果如下: 
 ```
-最佳超参数 alpha: 0.1
-测试集均方误差 (MSE): 10.123456789012345
-```
+Alpha: 0.01, Average MSE: 11.5373
+Alpha: 0.1, Average MSE: 11.5341
+Alpha: 1, Average MSE: 11.5119
+Alpha: 10, Average MSE: 11.6229
+Alpha: 100, Average MSE: 13.2561
 
-通过交叉验证，岭回归的最佳超参数 \( \alpha \) 为 0.1，测试集均方误差为约 10.12。
+最佳超参数 alpha: 1
+交叉验证最佳MSE: 11.5119
+测试集MSE: 10.7674
+测试集R²分数: 0.7890
+
+模型系数: [-0.53605509  1.34475957 -0.84685405 -4.98299806  0.07001785  2.76196589
+  1.2882827 ]
+模型偏置: 23.5994
+```
+经过后续对参数的反复调试, 观察到最佳的正则化参数 $\alpha$ 在1附近震荡(这是由数据打乱导致的), 因此可以认为最佳的正则化参数就是1.
 
 ---
 
-#### 第三部分：随机森林和梯度提升分类
+#### T2.3
 
-使用 Bank Marketing 数据集，进行随机森林和 XGBoost 分类。以下是 Python 代码实现：
+代码如下:
 
 ```python
-import pandas as pd
 import numpy as np
+import pandas as pd
+from ucimlrepo import fetch_ucirepo 
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import accuracy_score, classification_report
+import matplotlib.pyplot as plt
 
 # 加载数据
-url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00222/bank-additional.zip"
-# 注意：实际下载可能需要解压，这里使用 bank-additional-full.csv
-# 如果无法直接下载，请手动下载并加载文件
-data = pd.read_csv('bank-additional-full.csv', sep=';')
+bank_marketing = fetch_ucirepo(id=222) 
+X = bank_marketing.data.features 
+y = bank_marketing.data.targets 
 
 # 预处理：编码分类变量
 label_encoders = {}
-for column in data.select_dtypes(include=['object']).columns:
+categorical_columns = X.select_dtypes(include=['object']).columns
+
+for column in categorical_columns:
     le = LabelEncoder()
-    data[column] = le.fit_transform(data[column])
+    X[column] = le.fit_transform(X[column].astype(str))
     label_encoders[column] = le
 
-# 选择特征和目标
-X = data.drop('y', axis=1)
-y = data['y']
+# 编码目标变量
+y_encoder = LabelEncoder()
+y_encoded = y_encoder.fit_transform(y.values.ravel())
 
 # 分割数据
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+)
 
-# 随机森林
+print(f"Training set size: {X_train.shape}")
+print(f"Test set size: {X_test.shape}")
+
+# 随机森林分类
+print("\n=== Random Forest ===")
 rf_param_grid = {
     'n_estimators': [100, 200],
     'max_depth': [10, 20],
     'min_samples_split': [2, 5]
 }
+
 rf = RandomForestClassifier(random_state=42)
-rf_grid_search = GridSearchCV(rf, rf_param_grid, cv=5, scoring='accuracy')
+rf_grid_search = GridSearchCV(rf, rf_param_grid, cv=5, scoring='accuracy', n_jobs=-1)
 rf_grid_search.fit(X_train, y_train)
 
 best_rf = rf_grid_search.best_estimator_
 y_pred_rf = best_rf.predict(X_test)
 accuracy_rf = accuracy_score(y_test, y_pred_rf)
-print("随机森林最佳参数:", rf_grid_search.best_params_)
-print(f"随机森林测试准确率: {accuracy_rf}")
 
-# XGBoost
-xgb_param_grid = {
-    'n_estimators': [100, 200],
-    'max_depth': [3, 6],
-    'learning_rate': [0.1, 0.01]
-}
-xgb = XGBClassifier(random_state=42)
-xgb_grid_search = GridSearchCV(xgb, xgb_param_grid, cv=5, scoring='accuracy')
-xgb_grid_search.fit(X_train, y_train)
+print(f"Best parameters: {rf_grid_search.best_params_}")
+print(f"Accuracy: {accuracy_rf:.4f}")
 
-best_xgb = xgb_grid_search.best_estimator_
-y_pred_xgb = best_xgb.predict(X_test)
-accuracy_xgb = accuracy_score(y_test, y_pred_xgb)
-print("XGBoost最佳参数:", xgb_grid_search.best_params_)
-print(f"XGBoost测试准确率: {accuracy_xgb}")
+# XGBoost分类
+try:
+    import xgboost as xgb
+    
+    print("\n=== XGBoost ===")
+    xgb_param_grid = {
+        'n_estimators': [100, 200],
+        'max_depth': [3, 6],
+        'learning_rate': [0.1, 0.01]
+    }
+    
+    xgb_model = xgb.XGBClassifier(random_state=42)
+    xgb_grid_search = GridSearchCV(xgb_model, xgb_param_grid, cv=5, scoring='accuracy', n_jobs=-1)
+    xgb_grid_search.fit(X_train, y_train)
+    
+    best_xgb = xgb_grid_search.best_estimator_
+    y_pred_xgb = best_xgb.predict(X_test)
+    accuracy_xgb = accuracy_score(y_test, y_pred_xgb)
+    
+    print(f"Best parameters: {xgb_grid_search.best_params_}")
+    print(f"Accuracy: {accuracy_xgb:.4f}")
+    
+except ImportError:
+    print("\nXGBoost not installed, skipping XGBoost part")
+    print("Install with: pip install xgboost")
+    best_xgb = None
 
-# 比较结果
-print("\n随机森林分类报告:")
-print(classification_report(y_test, y_pred_rf))
+# 结果比较
+print("\n=== Model Comparison ===")
+if best_xgb is not None:
+    models_comparison = pd.DataFrame({
+        'Model': ['Random Forest', 'XGBoost'],
+        'Accuracy': [accuracy_rf, accuracy_xgb]
+    })
+else:
+    models_comparison = pd.DataFrame({
+        'Model': ['Random Forest'],
+        'Accuracy': [accuracy_rf]
+    })
 
-print("XGBoost分类报告:")
-print(classification_report(y_test, y_pred_xgb))
+print(models_comparison)
+
+# 特征重要性可视化
+plt.figure(figsize=(10, 6))
+rf_importance = best_rf.feature_importances_
+rf_indices = np.argsort(rf_importance)[::-1][:10]  # Top 10 features
+
+plt.barh(range(len(rf_indices)), rf_importance[rf_indices])
+plt.yticks(range(len(rf_indices)), [X.columns[i] for i in rf_indices])
+plt.title('Random Forest Feature Importance (Top 10)')
+plt.xlabel('Importance')
+plt.tight_layout()
+plt.show()
+
+# 打印简要分类报告
+print("\n=== Random Forest Classification Report ===")
+print(classification_report(y_test, y_pred_rf, target_names=y_encoder.classes_))
+
+if best_xgb is not None:
+    print("\n=== XGBoost Classification Report ===")
+    print(classification_report(y_test, y_pred_xgb, target_names=y_encoder.classes_))
 ```
 
-**输出结果（示例）：**
+输出结果如下:
 ```
-随机森林最佳参数: {'max_depth': 20, 'min_samples_split': 2, 'n_estimators': 200}
-随机森林测试准确率: 0.9123456789012346
-XGBoost最佳参数: {'learning_rate': 0.1, 'max_depth': 6, 'n_estimators': 200}
-XGBoost测试准确率: 0.9234567890123457
+=== Random Forest ===
+Best parameters: {'max_depth': 20, 'min_samples_split': 5, 'n_estimators': 200}
+Accuracy: 0.9057
 
-随机森林分类报告:
+=== XGBoost ===
+Best parameters: {'learning_rate': 0.1, 'max_depth': 6, 'n_estimators': 200}
+Accuracy: 0.9070
+
+=== Model Comparison ===
+           Model  Accuracy
+0  Random Forest  0.905673
+1        XGBoost  0.907000
+
+=== Random Forest Classification Report ===
               precision    recall  f1-score   support
 
-           0       0.92      0.98      0.95      7301
-           1       0.68      0.33      0.44       928
+          no       0.92      0.97      0.95      7985
+         yes       0.66      0.40      0.50      1058
 
-    accuracy                           0.91      8229
-   macro avg       0.80      0.65      0.70      8229
-weighted avg       0.90      0.91      0.90      8229
+    accuracy                           0.91      9043
+   macro avg       0.79      0.69      0.72      9043
+weighted avg       0.89      0.91      0.90      9043
 
-XGBoost分类报告:
+
+=== XGBoost Classification Report ===
               precision    recall  f1-score   support
 
-           0       0.93      0.98      0.95      7301
-           1       0.70      0.38      0.49       928
+          no       0.93      0.96      0.95      7985
+         yes       0.64      0.47      0.54      1058
 
-    accuracy                           0.92      8229
-   macro avg       0.81      0.68      0.72      8229
-weighted avg       0.91      0.92      0.91      8229
+    accuracy                           0.91      9043
+   macro avg       0.79      0.72      0.75      9043
+weighted avg       0.90      0.91      0.90      9043
 ```
-
-随机森林和 XGBoost 都达到了较高的准确率，XGBoost 略优于随机森林。具体参数如上所示。
+Random forest计算出的最重要的10个feature如下:
+![](MLHW5.2.3.1.png)
+Random forest 和 XGBoost 都达到了较高的准确率, XGBoost 略优于 Random forest. 具体参数如上所示。
 
 ---
 
-#### 第四部分：计算证据并比较模型
+#### T2.4
 
-给定数据 \( D = (0.3, 0.5, 0.7, 0.8, 0.9) \)，计算模型 \( H_0 \) 和 \( H_1 \) 的证据。
+对于 $ H_0 $ (均匀分布):
 
-- **对于 \( H_0 \)（均匀分布）**：
-  \[
-  p(D|H_0) = \prod_{i=1}^{5} p(x_i|H_0) = \prod_{i=1}^{5} \frac{1}{2} = \left( \frac{1}{2} \right)^5 = \frac{1}{32} = 0.03125
-  \]
+$$
+\begin{aligned}
+p(D|H_0) = \prod_{i=1}^{5} p(x_i|H_0) = \prod_{i=1}^{5} \frac{1}{2} = \left( \frac{1}{2} \right)^5 = \frac{1}{32} = 0.03125
+\end{aligned}
+$$
 
-- **对于 \( H_1 \)（非均匀分布）**：
-  假设 \( m \) 在 \( (-1, 1) \) 上均匀分布，即 \( p(m|H_1) = \frac{1}{2} \)。
-  证据为：
-  \[
-  p(D|H_1) = \int_{-1}^{1} p(D|m, H_1) p(m|H_1) dm = \int_{-1}^{1} \left[ \prod_{i=1}^{5} \frac{1}{2} (1 + m x_i) \right] \frac{1}{2} dm = \frac{1}{2^6} \int_{-1}^{1} \prod_{i=1}^{5} (1 + m x_i) dm
-  \]
-  其中 \( x_i = [0.3, 0.5, 0.7, 0.8, 0.9] \)。
+对于 $ H_1 $ (非均匀分布), 设 $x_i := [0.3, 0.5, 0.7, 0.8, 0.9]$, 则有: 
 
-  计算积分：
-  \[
-  \prod_{i=1}^{5} (1 + m x_i) = (1 + 0.3m)(1 + 0.5m)(1 + 0.7m)(1 + 0.8m)(1 + 0.9m)
-  \]
-  展开这个多项式（使用 Python 计算）：
+$$
+\begin{aligned}
+p(D|m,H_1) =& \prod_{i=1}^{5} \frac{1}{2} (1 + m x_i) = \frac{1}{2^5} \prod_{i=1}^{5} (1 + m x_i) \\
+=& \frac{1}{2^5} \times (1.0 + 3.2 m + 4.35 m^2 + 2.87 m^3 + 0.87 m^4 + 0.0756 m^5)
+\end{aligned}
+$$
 
-```python
-from sympy import symbols, integrate, expand
+这里为了方便计算和后续比较, 假设 $ m $ 在 $ (-1, 1) $ 上均匀分布, 即 $ p(m|H_1) = \frac{1}{2} $. 
+此时evidence化成: 
 
-m = symbols('m')
-x_values = [0.3, 0.5, 0.7, 0.8, 0.9]
-product = 1
-for x in x_values:
-    product *= (1 + m * x)
-
-expanded_product = expand(product)
-print("多项式展开:", expanded_product)
-```
-
-多项式展开为：
-\[
-1.0 + 3.2 m + 4.35 m^2 + 2.87 m^3 + 0.87 m^4 + 0.0756 m^5
-\]
-
-然后计算积分：
-\[
-\int_{-1}^{1} (1.0 + 3.2 m + 4.35 m^2 + 2.87 m^3 + 0.87 m^4 + 0.0756 m^5) dm
-\]
-
-由于积分区间对称，奇函数部分积分为零，因此：
-\[
-\int_{-1}^{1} 3.2 m \, dm = 0, \quad \int_{-1}^{1} 2.87 m^3 \, dm = 0, \quad \int_{-1}^{1} 0.0756 m^5 \, dm = 0
-\]
-所以只需计算偶函数部分：
-\[
-\int_{-1}^{1} (1.0 + 4.35 m^2 + 0.87 m^4) dm = \left[ m + 4.35 \frac{m^3}{3} + 0.87 \frac{m^5}{5} \right]_{-1}^{1} = 2 \left( 1 + \frac{4.35}{3} + \frac{0.87}{5} \right)
-\]
-
-计算数值：
-```python
-integral_value = 2 * (1 + 4.35/3 + 0.87/5)
-print("积分值:", integral_value)
-```
-
-积分值约为 \( 2 \times (1 + 1.45 + 0.174) = 2 \times 2.624 = 5.248 \)。
-
-因此：
-\[
-p(D|H_1) = \frac{1}{64} \times 5.248 = 0.082
-\]
-
-比较证据：
-- \( p(D|H_0) = 0.03125 \)
-- \( p(D|H_1) = 0.082 \)
-
-由于 \( p(D|H_1) > p(D|H_0) \)，模型 \( H_1 \) 更优。
+$$
+\begin{aligned}
+p(D|H_1) =& \int_{-1}^{1} p(D|m, H_1) p(m|H_1) dm \\
+=& \int_{-1}^{1} \frac{1}{2^6} \times (1.0 + 3.2 m + 4.35 m^2 + 2.87 m^3 + 0.87 m^4 + 0.0756 m^5) dm \\
+=& \frac{1}{2^6} \int_{-1}^{1} (1.0 + 4.35 m^2 + 0.87 m^4) dm \approx 0.082
+\end{aligned}
+$$
+从而 $p(D|H_1) > p(D|H_0)$ , 模型 $ H_1 $ 更优. 
 
 ---
 
-### 总结
-- 第一部分：最优决策是条件中位数。
-- 第二部分：岭回归最佳超参数为 \( \alpha = 0.1 \)，测试 MSE 为 10.12。
-- 第三部分：随机森林和 XGBoost 分类结果相似，XGBoost 略优。
-- 第四部分：模型 \( H_1 \) 的证据更大，因此更支持 \( H_1 \)。
+![](MLHW5.3.png)
+
+#### T3.1

@@ -1,48 +1,115 @@
 import numpy as np
+import pandas as pd
 from ucimlrepo import fetch_ucirepo 
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import accuracy_score, classification_report
+import matplotlib.pyplot as plt
 
-# 1. 加载葡萄酒数据集
-wine = fetch_ucirepo(id=109) 
-X = wine.data.features 
-y = wine.data.targets 
+# 加载数据
+bank_marketing = fetch_ucirepo(id=222) 
+X = bank_marketing.data.features 
+y = bank_marketing.data.targets 
 
-print(f"数据集形状: {X.shape}")
+# 预处理：编码分类变量
+label_encoders = {}
+categorical_columns = X.select_dtypes(include=['object']).columns
 
-# 2. 数据标准化
-X_std = (X - np.mean(X, axis=0)) / np.std(X, axis=0)
+for column in categorical_columns:
+    le = LabelEncoder()
+    X[column] = le.fit_transform(X[column].astype(str))
+    label_encoders[column] = le
 
-# 3. 计算协方差矩阵
-cov_matrix = np.cov(X_std, rowvar=False)
+# 编码目标变量
+y_encoder = LabelEncoder()
+y_encoded = y_encoder.fit_transform(y.values.ravel())
 
-# 4. 计算特征值和特征向量
-eigenvalues, eigenvectors = np.linalg.eig(cov_matrix)
+# 分割数据
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+)
 
-# 5. 按特征值大小排序
-idx = eigenvalues.argsort()[::-1]
-eigenvalues = eigenvalues[idx]
-eigenvectors = eigenvectors[:, idx]
+print(f"Training set size: {X_train.shape}")
+print(f"Test set size: {X_test.shape}")
 
-# 6. 提取前三个主成分和对应的方差
-pc1 = eigenvectors[:, 0]
-pc2 = eigenvectors[:, 1]
-pc3 = eigenvectors[:, 2]
+# 随机森林分类
+print("\n=== Random Forest ===")
+rf_param_grid = {
+    'n_estimators': [100, 200],
+    'max_depth': [10, 20],
+    'min_samples_split': [2, 5]
+}
 
-variance_pc1 = eigenvalues[0]
-variance_pc2 = eigenvalues[1]
-variance_pc3 = eigenvalues[2]
+rf = RandomForestClassifier(random_state=42)
+rf_grid_search = GridSearchCV(rf, rf_param_grid, cv=5, scoring='accuracy', n_jobs=-1)
+rf_grid_search.fit(X_train, y_train)
 
-# 7. 输出结果
-print(f"\n前三个主成分的方差:")
-print(f"PC1: {variance_pc1:.4f}")
-print(f"PC2: {variance_pc2:.4f}")
-print(f"PC3: {variance_pc3:.4f}")
+best_rf = rf_grid_search.best_estimator_
+y_pred_rf = best_rf.predict(X_test)
+accuracy_rf = accuracy_score(y_test, y_pred_rf)
 
-# 8. 输出前三个主成分向量
-print(f"\n第一主成分向量 (PC1):")
-print(pc1)
+print(f"Best parameters: {rf_grid_search.best_params_}")
+print(f"Accuracy: {accuracy_rf:.4f}")
 
-print(f"\n第二主成分向量 (PC2):")
-print(pc2)
+# XGBoost分类
+try:
+    import xgboost as xgb
+    
+    print("\n=== XGBoost ===")
+    xgb_param_grid = {
+        'n_estimators': [100, 200],
+        'max_depth': [3, 6],
+        'learning_rate': [0.1, 0.01]
+    }
+    
+    xgb_model = xgb.XGBClassifier(random_state=42)
+    xgb_grid_search = GridSearchCV(xgb_model, xgb_param_grid, cv=5, scoring='accuracy', n_jobs=-1)
+    xgb_grid_search.fit(X_train, y_train)
+    
+    best_xgb = xgb_grid_search.best_estimator_
+    y_pred_xgb = best_xgb.predict(X_test)
+    accuracy_xgb = accuracy_score(y_test, y_pred_xgb)
+    
+    print(f"Best parameters: {xgb_grid_search.best_params_}")
+    print(f"Accuracy: {accuracy_xgb:.4f}")
+    
+except ImportError:
+    print("\nXGBoost not installed, skipping XGBoost part")
+    print("Install with: pip install xgboost")
+    best_xgb = None
 
-print(f"\n第三主成分向量 (PC3):")
-print(pc3)
+# 结果比较
+print("\n=== Model Comparison ===")
+if best_xgb is not None:
+    models_comparison = pd.DataFrame({
+        'Model': ['Random Forest', 'XGBoost'],
+        'Accuracy': [accuracy_rf, accuracy_xgb]
+    })
+else:
+    models_comparison = pd.DataFrame({
+        'Model': ['Random Forest'],
+        'Accuracy': [accuracy_rf]
+    })
+
+print(models_comparison)
+
+# 特征重要性可视化
+plt.figure(figsize=(10, 6))
+rf_importance = best_rf.feature_importances_
+rf_indices = np.argsort(rf_importance)[::-1][:10]  # Top 10 features
+
+plt.barh(range(len(rf_indices)), rf_importance[rf_indices])
+plt.yticks(range(len(rf_indices)), [X.columns[i] for i in rf_indices])
+plt.title('Random Forest Feature Importance (Top 10)')
+plt.xlabel('Importance')
+plt.tight_layout()
+plt.show()
+
+# 打印简要分类报告
+print("\n=== Random Forest Classification Report ===")
+print(classification_report(y_test, y_pred_rf, target_names=y_encoder.classes_))
+
+if best_xgb is not None:
+    print("\n=== XGBoost Classification Report ===")
+    print(classification_report(y_test, y_pred_xgb, target_names=y_encoder.classes_))
