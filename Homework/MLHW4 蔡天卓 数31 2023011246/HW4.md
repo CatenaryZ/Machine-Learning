@@ -526,6 +526,7 @@ p(D|H_1) =& \int_{-1}^{1} p(D|m, H_1) p(m|H_1) dm \\
 =& \frac{1}{2^6} \int_{-1}^{1} (1.0 + 4.35 m^2 + 0.87 m^4) dm \approx 0.082
 \end{aligned}
 $$
+
 从而 $p(D|H_1) > p(D|H_0)$ , 模型 $ H_1 $ 更优. 
 
 ---
@@ -533,3 +534,128 @@ $$
 ![](MLHW5.3.png)
 
 #### T3.1
+
+边集为 \( \{ (x_{i-1}, x_i) \mid i=2,\ldots,n \} \cup \{ (x_{i-2}, x_i) \mid i=3,\ldots,n \} \), 由指标小的node指向指标大的node, 到x_n结束, 图示如下(两张图分别对应n为奇数和偶数): 
+
+![](MLHW5.3.1.0.png)
+![](MLHW5.3.1.1.png)
+
+---
+
+#### T3.2
+
+- **(a) \( p(a, d|c) \)**  
+  路径 $A \to B \to D$ 未被 $C$ 阻塞, 因此条件独立不成立. 
+
+- **(b) \( p(a, e|b) \)**  
+  路径 $A \to E$ 未被 $B$ 阻塞, 因此条件独立不成立. 
+
+- **(c) \( p(a, d|b) \)**  
+  路径 $A \to C \to D$ 未被 $B$ 阻塞, 因此条件独立不成立. 
+
+- **(d) \( p((a, c), d|b) \)**  
+  路径 $C \to D$ 未被 $B$ 阻塞, 因此条件独立不成立. 
+
+---
+
+#### T3.3
+
+课上讲了两种方法, 分别是Elbow Method以及Silhouette Analysis. Python代码如下:
+```python
+# === 导入必要的包 ===
+from ucimlrepo import fetch_ucirepo
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+import matplotlib.pyplot as plt
+
+# === 1. 获取数据 ===
+online_retail = fetch_ucirepo(id=352)
+X = online_retail.data.features
+
+# === 2. 数据清洗与特征选择 ===
+X = X.dropna(subset=['CustomerID'])
+X['CustomerID'] = X['CustomerID'].astype(int)
+
+# 聚合为每个顾客的数据
+customer_df = X.groupby('CustomerID').agg({
+    'Quantity': 'sum',           # 总购买量
+    'UnitPrice': 'mean'          # 平均单价
+}).reset_index()
+
+# 增加总消费额特征
+customer_df['TotalSpend'] = X.groupby('CustomerID').apply(
+    lambda df: np.sum(df['Quantity'] * df['UnitPrice'])
+).values
+
+# 仅使用数值特征
+features = customer_df[['Quantity', 'UnitPrice', 'TotalSpend']]
+
+# === 3. 数据标准化 ===
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(features)
+
+# === 4. 肘部法则曲线 ===
+inertias = []
+K_range = range(2, 11)
+
+for k in K_range:
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    kmeans.fit(X_scaled)
+    inertias.append(kmeans.inertia_)
+
+plt.figure(figsize=(6, 4))
+plt.plot(K_range, inertias, marker='o')
+plt.xlabel('K')
+plt.ylabel('Inertia')
+plt.title('Elbow Method for K Selection')
+plt.show()
+
+# === 5. 轮廓系数分析 ===
+silhouette_scores = []
+for k in K_range:
+    kmeans = KMeans(n_clusters=k, random_state=42)
+    labels = kmeans.fit_predict(X_scaled)
+    score = silhouette_score(X_scaled, labels)
+    silhouette_scores.append(score)
+
+plt.figure(figsize=(6, 4))
+plt.plot(K_range, silhouette_scores, marker='o', color='orange')
+plt.xlabel('K')
+plt.ylabel('Silhouette Score')
+plt.title('Silhouette Analysis for K Selection')
+plt.show()
+```
+
+运行结果如下:
+![](MLHW5.3.3.1.png)
+![](MLHW5.3.3.2.png)
+
+观察图像分析可知, Elbow Method下K=4的情形是最好的; Silhouette Amalysis下K=2的结果最好, 但与K=4相差不大. 故最终选择**K=4**为最佳的K值, 此时的计算代码与计算结果如下: 
+
+```python
+# === 计算聚类 ===
+k_final = 4
+kmeans_final = KMeans(n_clusters=k_final, random_state=42)
+customer_df['Cluster'] = kmeans_final.fit_predict(X_scaled)
+
+# === 输出 K=4 的肘部法则结果（Inertia） ===
+inertia_k4 = kmeans_final.inertia_
+print(f"当 K={k_final} 时的 Inertia（肘部法则指标）为: {inertia_k4:.2f}")
+
+# === 输出每个簇的平均特征 ===
+cluster_summary = customer_df.groupby('Cluster')[['Quantity', 'UnitPrice', 'TotalSpend']].mean()
+print("\n各簇的平均特征值：")
+print(cluster_summary)
+```
+```
+各簇的平均特征值：
+              Quantity    UnitPrice     TotalSpend
+Cluster
+0           852.479282     5.146260    1440.770873
+1        109956.666667     7.988403  241136.560000
+2         37990.826087     6.945501   57460.243043
+3            29.500000  6171.705000   -1819.065000
+```
