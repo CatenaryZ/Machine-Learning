@@ -1,3 +1,5 @@
+### 题干
+
 1. 考虑如下概率图模型(图略)：  
    - 写出对应的因子图  
    - 使用和积算法（sum-product algorithm）计算边缘概率 \(p(x_2)\)
@@ -45,14 +47,14 @@ f_{X2}=p(X_2\mid Z_2),
 f_{X3}=p(X_3\mid Z_3).
 $$
 
-因子图如下:
+因子图如下（小括号代表圆圈，中括号代表正方形）:
 
 ```
 [f_Z1]──(Z1)──[f_Z2]──(Z2)──[f_Z3]──(Z3)
-          │            │              │
-        [f_X1]       [f_X2]         [f_X3]
-          │            │              │
-         (X1)         (X2)          (X3)
+         │             │             │
+       [f_X1]        [f_X2]        [f_X3]
+         │             │             │
+        (X1)          (X2)          (X3)
 ```
 
 #### 边际概率
@@ -253,3 +255,161 @@ $$
 ---
 
 ### Solution of T3
+
+---
+
+### Solution of T4
+
+以下以生成(-5,5)上的服从 $f(x) = \frac{1}{\sqrt{2\pi}}e^{-x^2/2}$的随机变量为例, 代码如下:
+
+```python
+import numpy as np
+
+def simple_rejection_sampling():
+    def complex_target(x):
+        # 这里写出pdf的表达式
+        return (1 / np.sqrt(2 * np.pi)) * np.exp(-x**2 / 2)
+    
+    n_samples = 1000
+    samples = []
+    
+    # 确定M
+    x_test = np.linspace(-5, 5, 1000)
+    max_value = np.max(complex_target(x_test))
+    M = max_value + 0.1
+    
+    while len(samples) < n_samples:
+        x_proposal = np.random.uniform(-5, 5)
+        u = np.random.uniform(0, 1)
+        acceptance_prob = complex_target(x_proposal) / M 
+        
+        if u < acceptance_prob:
+            samples.append(x_proposal)
+    
+    return samples
+
+# 生成随机样本
+simple_samples = simple_rejection_sampling()
+print(f"\n简单示例生成了 {len(simple_samples)} 个样本")
+```
+
+---
+
+### Solution of T5
+
+由于 $\pi = (\pi_1, \pi_2, \pi_3)$ 是一个平稳分布，因此：
+
+$$
+\pi P = \pi \quad  \pi_1 + \pi_2 + \pi_3 = 1, \quad \pi_i \ge 0
+$$
+   
+所以：
+
+$$
+[\pi_1, \pi_2, \pi_3]
+\begin{bmatrix}
+p_{11} & p_{12} & p_{13} \\
+p_{21} & p_{22} & p_{23} \\
+p_{31} & p_{32} & p_{33}
+\end{bmatrix}
+= [\pi_1, \pi_2, \pi_3]
+$$
+
+即:
+
+$$
+\begin{bmatrix}
+p_{11} - 1 & p_{21} & p_{31} \\
+p_{12} & p_{22} - 1 & p_{32} \\
+p_{13} & p_{23} & p_{33} - 1
+\end{bmatrix}
+\begin{bmatrix}
+\pi_{1}\\
+\pi_{2}\\
+\pi_{3}
+\end{bmatrix}
+= 0 \qquad \cdots  \quad(*)
+$$
+
+因为 \(P\) 是随机矩阵，有：
+
+$$
+\begin{aligned}
+p_{11} + p_{12} + p_{13} = 1\\
+p_{21} + p_{22} + p_{23} = 1\\
+p_{31} + p_{32} + p_{33} = 1
+\end{aligned}
+$$
+
+故在$(*)$两端左乘如下矩阵:
+
+$$
+\begin{bmatrix}
+1 & 0 & 0 \\
+0 & 1 & 0 \\
+1 & 1 & 1
+\end{bmatrix}
+$$
+
+得到:
+
+$$
+\begin{bmatrix}
+p_{11} - 1 & p_{21} & p_{31} \\
+p_{12} & p_{22} - 1 & p_{32} \\
+0 & 0 & 0
+\end{bmatrix}
+\begin{bmatrix}
+\pi_{1}\\
+\pi_{2}\\
+\pi_{3}
+\end{bmatrix}
+= 0
+$$
+
+即满足两个方程, 再加上方程 $\pi_1 + \pi_2 + \pi_3 = 1$, 即可得到 $\pi$ 满足的方程组:
+
+$$
+\begin{bmatrix}
+p_{11} - 1 & p_{21} & p_{31} \\
+p_{12} & p_{22} - 1 & p_{32} \\
+1 & 1 & 1
+\end{bmatrix}
+\begin{bmatrix}
+\pi_{1}\\
+\pi_{2}\\
+\pi_{3}
+\end{bmatrix}
+= 0
+$$
+
+或者等价地写成：
+
+$$
+\begin{cases}
+\pi_1 (p_{11} - 1) + \pi_2 p_{21} + \pi_3 p_{31} = 0 \\
+\pi_1 p_{12} + \pi_2 (p_{22} - 1) + \pi_3 p_{32} = 0 \\
+\pi_1 + \pi_2 + \pi_3 = 1
+\end{cases}
+$$
+
+---
+
+### Solution of T6
+
+---
+
+### Solution of T7
+
+设d维随机变量 $\mathbf{x} = (x_1, \dots, x_d)$，目标分布为 $\pi(\mathbf{x})$。Gibbs Sampling每一步更新一个坐标i，从条件分布 $\pi(x_i' \mid \mathbf{x}_{-i})$ 采样新值 $x_i'$，其中 $\mathbf{x}_{-i} = (x_1, \dots, x_{i-1}, x_{i+1}, \dots, x_d)$。新状态为 $\mathbf{x}' = (x_1, \dots, x_{i-1}, x_i', x_{i+1}, \dots, x_d)$，满足 $\mathbf{x}_{-i} = \mathbf{x}_{-i}'$。转移概率 $P(\mathbf{x} \to \mathbf{x}') = \pi(x_i' \mid \mathbf{x}_{-i})$ 。下证其满足细致平衡条件：$ \pi(\mathbf{x}) P(\mathbf{x} \to \mathbf{x}') = \pi(\mathbf{x}') P(\mathbf{x}' \to \mathbf{x})$ 。注意到：
+
+$$
+LHS = \pi(\mathbf{x}) \pi(x_i' \mid \mathbf{x}_{-i}) = \frac{\pi(\mathbf{x}) \pi(\mathbf{x}')}{\pi(\mathbf{x}_{-i})}
+$$
+
+右边：
+$$
+RHS = \pi(\mathbf{x}') \pi(x_i \mid \mathbf{x}_{-i}') = \pi(\mathbf{x}') \pi(x_i \mid \mathbf{x}_{-i}) = \frac{\pi(\mathbf{x}') \pi(\mathbf{x})}{\pi(\mathbf{x}_{-i})}
+$$
+
+因此 $LHS = RHS$，吉布斯采样满足细致平衡条件。
