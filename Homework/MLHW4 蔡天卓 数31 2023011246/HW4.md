@@ -512,7 +512,7 @@ $$
 $$
 \begin{aligned}
 p(D|m,H_1) =& \prod_{i=1}^{5} \frac{1}{2} (1 + m x_i) = \frac{1}{2^5} \prod_{i=1}^{5} (1 + m x_i) \\
-=& \frac{1}{2^5} \times (1.0 + 3.2 m + 4.35 m^2 + 2.87 m^3 + 0.87 m^4 + 0.0756 m^5)
+=& \frac{1}{2^5} \times (1.0 + 3.2 m + 3.98 m^2 + 2.392 m^3 + 0.6897 m^4 + 0.0756 m^5)
 \end{aligned}
 $$
 
@@ -522,8 +522,8 @@ $$
 $$
 \begin{aligned}
 p(D|H_1) =& \int_{-1}^{1} p(D|m, H_1) p(m|H_1) dm \\
-=& \int_{-1}^{1} \frac{1}{2^6} \times (1.0 + 3.2 m + 4.35 m^2 + 2.87 m^3 + 0.87 m^4 + 0.0756 m^5) dm \\
-=& \frac{1}{2^6} \int_{-1}^{1} (1.0 + 4.35 m^2 + 0.87 m^4) dm \approx 0.082
+=& \int_{-1}^{1} \frac{1}{2^6} \times (1.0 + 3.2 m + 3.98 m^2 + 2.392 m^3 + 0.6897 m^4 + 0.0756 m^5) dm \\
+=& \frac{1}{2^6} \int_{-1}^{1} (1.0 + 3.98 m^2 + 0.6897 m^4) dm \approx 0.077
 \end{aligned}
 $$
 
@@ -564,8 +564,7 @@ $$
 ```python
 # === 导入必要的包 ===
 from ucimlrepo import fetch_ucirepo
-import pandas as pd
-import numpy as np
+import pandas as pdimport numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score

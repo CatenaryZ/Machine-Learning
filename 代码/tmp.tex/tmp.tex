@@ -1,0 +1,59 @@
+\documentclass{article}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+
+\begin{document}
+
+\begin{center}
+\begin{tikzpicture}[
+    node distance=20mm and 15mm,  % 增加间距
+    every node/.style={font=\small},
+    var/.style={draw, circle, minimum size=10mm},
+    fac/.style={draw, rectangle, minimum height=10mm, minimum width=20mm, align=center}
+]
+
+  % ====== 第一行：状态转移因子 ======
+  \node[fac] (fZ1) at (0,4) {初始概率 \\ $p(Z_1)$};
+  \node[fac, right=of fZ1] (fZ2) {状态转移 \\ $p(Z_2|Z_1)$};
+  \node[fac, right=of fZ2] (fZ3) {状态转移 \\ $p(Z_3|Z_2)$};
+  
+  % ====== 第二行：隐状态变量 ======
+  \node[var, below=of fZ1] (Z1) {$Z_1$};
+  \node[var, right=of Z1] (Z2) {$Z_2$};
+  \node[var, right=of Z2] (Z3) {$Z_3$};
+  
+  % ====== 第三行：观测变量 ======
+  \node[var, below=of Z1] (X1) {$X_1$};
+  \node[var, below=of Z2] (X2) {$X_2$};
+  \node[var, below=of Z3] (X3) {$X_3$};
+  
+  % ====== 第四行：发射因子 ======
+  \node[fac, below=of X1] (fX1) {发射概率 \\ $p(X_1|Z_1)$};
+  \node[fac, below=of X2] (fX2) {发射概率 \\ $p(X_2|Z_2)$};
+  \node[fac, below=of X3] (fX3) {发射概率 \\ $p(X_3|Z_3)$};
+
+  % ====== 连接线 ======
+  
+  % 状态转移连接
+  \draw (fZ1) -- (Z1);
+  \draw (fZ2) -- (Z1);
+  \draw (fZ2) -- (Z2);
+  \draw (fZ3) -- (Z2);
+  \draw (fZ3) -- (Z3);
+  
+  % 时间序列连接（隐状态之间的转移）
+  \draw[->, thick] (Z1) -- (Z2);
+  \draw[->, thick] (Z2) -- (Z3);
+
+  % 发射概率连接
+  \draw (fX1) -- (Z1);
+  \draw (fX1) -- (X1);
+  \draw (fX2) -- (Z2);
+  \draw (fX2) -- (X2);
+  \draw (fX3) -- (Z3);
+  \draw (fX3) -- (X3);
+
+\end{tikzpicture}
+\end{center}
+
+\end{document}
