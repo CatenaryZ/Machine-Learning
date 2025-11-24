@@ -121,3 +121,135 @@ $$
 $$
 p(x_2)=\sum_{z_2} p(x_2\mid z_2)\left(\sum_{z_1}p(z_1)p(z_2\mid z_1)\right)
 $$
+
+---
+
+### Solution of T2
+
+回忆GMM模型的设定：假设我们有N个观测数据 $x_1, x_2, \dots, x_N$，假设它们独立同分布，服从K个高斯分布的混合：
+
+$$
+p(x_n \mid \Theta) = \sum_{k=1}^K \pi_k \mathcal{N}(x_n \mid \mu_k, \Sigma_k)
+$$
+
+其中：
+
+* $\pi_k$ 是混合权重，满足 $\sum_k \pi_k = 1$ 且 $\pi_k \ge 0$
+* $\mu_k$ 和 $\Sigma_k$ 分别是第k个高斯的均值和协方差矩阵
+* $\Theta = {\pi_k, \mu_k, \Sigma_k}_{k=1}^K$ 是所有参数
+
+隐变量 $z_n$表示第n个样本属于哪一类：
+
+$$
+z_n = [z_{n1}, z_{n2}, \dots, z_{nK}], \quad z_{nk} \in {0,1}, \quad \sum_{k} z_{nk} = 1
+$$
+
+则complete-data likelihood为：
+
+$$
+p(\{x_n, z_n\}_{n=1}^N \mid \Theta) = \prod_{n=1}^N \prod_{k=1}^K \big[\pi_k \mathcal{N}(x_n \mid \mu_k, \Sigma_k)\big]^{z_{nk}}
+$$
+
+对数似然：
+
+$$
+\ln p(X,Z \mid \Theta) = \sum_{n=1}^N \sum_{k=1}^K z_{nk} \Big[ \ln \pi_k + \ln \mathcal{N}(x_n \mid \mu_k, \Sigma_k) \Big]
+$$
+
+#### E-Step
+
+在E-step，我们希望计算隐变量的后验期望
+
+$$
+\gamma_{nk} \equiv \mathbb{E}[z_{nk} \mid x_n, \Theta^{\text{old}}] = p(z_{nk}=1 \mid x_n, \Theta^{\text{old}})
+$$
+
+根据贝叶斯公式：
+
+$$
+\gamma_{nk} = p(z_{nk}=1 \mid x_n, \Theta^{\text{old}})
+= \frac{ \pi_k \mathcal{N}(x_n \mid \mu_k, \Sigma_k) }{ \sum_{j=1}^K \pi_j \mathcal{N}(x_n \mid \mu_j, \Sigma_j) }
+$$
+
+#### M-Step
+
+在M-step，我们希望最大化期望对数似然
+
+定义Q 函数：
+
+$$
+Q(\Theta, \Theta^{\text{old}}) = \mathbb{E}_{Z \mid X, \Theta^{\text{old}}}[\ln p(X,Z \mid \Theta)]
+= \sum_{n=1}^N \sum_{k=1}^K \gamma_{nk} \Big[ \ln \pi_k + \ln \mathcal{N}(x_n \mid \mu_k, \Sigma_k) \Big]
+$$
+
+以下分别对 $\pi_k$、$\mu_k$、$\Sigma_k$ 求最大化。
+
+由于有约束条件 $\sum_k \pi_k = 1$。引入拉格朗日乘子：
+
+$$
+\mathcal{L} = \sum_{n=1}^N \sum_{k=1}^K \gamma_{nk} \ln \pi_k + \lambda \left( \sum_{k=1}^K \pi_k -1 \right)
+$$
+
+Q 对 $\pi_k$ 求导导数为 0：
+
+$$
+\frac{\partial \mathcal{L}}{\partial \pi_k} = \sum_{n=1}^N \frac{\gamma_{nk}}{\pi_k} + \lambda = 0 \quad \Rightarrow \quad \pi_k = -\frac{1}{\lambda} \sum_{n=1}^N \gamma_{nk}
+$$
+
+利用约束 $\sum_k \pi_k = 1$：
+
+$$
+\sum_k \pi_k = -\frac{1}{\lambda} \sum_k \sum_n \gamma_{nk} = -\frac{1}{\lambda} \sum_n \sum_k \gamma_{nk} = -\frac{1}{\lambda} N = 1 \quad \Rightarrow \lambda = -N
+$$
+
+所以更新公式：
+
+$$
+\pi_k^{\text{new}} = \frac{1}{N} \sum_{n=1}^N \gamma_{nk}
+$$
+
+因为：
+
+$$
+\ln \mathcal{N}(x_n \mid \mu_k, \Sigma_k) = -\frac{1}{2} (x_n - \mu_k)^T \Sigma_k^{-1} (x_n - \mu_k) + \text{const}
+$$
+
+因此 Q 对 $\mu_k$ 求导并令导数为 0：
+
+$$
+\sum_{n=1}^N \gamma_{nk} \Sigma_k^{-1} (x_n - \mu_k) = 0 \quad \Rightarrow \quad \mu_k^{\text{new}} = \frac{\sum_{n=1}^N \gamma_{nk} x_n}{\sum_{n=1}^N \gamma_{nk}}
+$$
+
+Q 对 $\Sigma_k$ 进行矩阵求导并令导数为 0：考虑到 $\Sigma_k$ 是对称正定矩阵，使用矩阵求导公式 $\frac{\partial \ln |\Sigma|}{\partial \Sigma} = (\Sigma^{-1})^T = \Sigma^{-1}$，$\frac{\partial}{\partial \Sigma} \big[ x^T \Sigma^{-1} x \big] = - \Sigma^{-1} x x^T \Sigma^{-1}$，因此求导结果如下：
+
+$$
+\frac{\partial L}{\partial \Sigma_k} = -\frac{1}{2} \sum_{n=1}^N \gamma_{nk} \left[ \Sigma_k^{-1} - \Sigma_k^{-1} (x_n - \mu_k)(x_n - \mu_k)^T \Sigma_k^{-1} \right] = 0
+$$
+
+化简后解得：
+
+$$
+\Sigma_k^{\text{new}} = \frac{\sum_{n=1}^N \gamma_{nk} (x_n - \mu_k^{\text{new}})(x_n - \mu_k^{\text{new}})^T}{\sum_{n=1}^N \gamma_{nk}}
+$$
+
+综上所述：
+
+**E 步**：
+
+$$
+\gamma_{nk} = \frac{ \pi_k \mathcal{N}(x_n \mid \mu_k, \Sigma_k) }{ \sum_{j=1}^K \pi_j \mathcal{N}(x_n \mid \mu_j, \Sigma_j) }
+$$
+
+**M 步**：
+
+$$
+\begin{aligned}
+\pi_k^{\text{new}} &= \frac{1}{N} \sum_{n=1}^N \gamma_{nk} \\
+\mu_k^{\text{new}} &= \frac{\sum_{n=1}^N \gamma_{nk} x_n}{\sum_{n=1}^N \gamma_{nk}} \\
+\Sigma_k^{\text{new}} &= \frac{\sum_{n=1}^N \gamma_{nk} (x_n - \mu_k^{\text{new}})(x_n - \mu_k^{\text{new}})^T}{\sum_{n=1}^N \gamma_{nk}}
+\end{aligned}
+$$
+
+---
+
+### Solution of T3
