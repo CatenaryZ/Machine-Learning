@@ -1,79 +1,197 @@
-# === 导入必要的包 ===
-from ucimlrepo import fetch_ucirepo
-import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
-import matplotlib.pyplot as plt
+from scipy.stats import multivariate_normal
 
-# === 1. 获取数据 ===
-online_retail = fetch_ucirepo(id=352)
-X = online_retail.data.features
+class BasicMCMC:
+    """Basic MCMC method (Metropolis-Hastings)"""
+    
+    def __init__(self, target_dist, proposal_std=1.0):
+        self.target_dist = target_dist
+        self.proposal_std = proposal_std
+        
+    def sample(self, n_samples, initial_state, burn_in=1000):
+        current_state = initial_state
+        samples = []
+        accepted = 0
+        
+        for i in range(n_samples + burn_in):
+            # Generate candidate sample (normal distribution proposal)
+            proposal = current_state + np.random.normal(0, self.proposal_std, size=current_state.shape)
+            
+            # Calculate acceptance probability
+            current_prob = self.target_dist(current_state)
+            proposal_prob = self.target_dist(proposal)
+            acceptance_ratio = min(1, proposal_prob / current_prob)
+            
+            # Accept or reject
+            if np.random.rand() < acceptance_ratio:
+                current_state = proposal
+                if i >= burn_in:
+                    accepted += 1
+            
+            if i >= burn_in:
+                samples.append(current_state.copy())
+        
+        acceptance_rate = accepted / n_samples
+        return np.array(samples), acceptance_rate
 
-# === 2. 数据清洗与特征选择 ===
-X = X.dropna(subset=['CustomerID'])
-X['CustomerID'] = X['CustomerID'].astype(int)
+class HamiltonianMC:
+    """Hamiltonian Monte Carlo method"""
+    
+    def __init__(self, target_dist, step_size=0.1, n_leapfrog=10, mass=1.0):
+        self.target_dist = target_dist
+        self.step_size = step_size
+        self.n_leapfrog = n_leapfrog
+        self.mass = mass
+        
+    def kinetic_energy(self, momentum):
+        """Kinetic energy"""
+        return 0.5 * np.sum(momentum**2) / self.mass
+    
+    def potential_energy(self, position):
+        """Potential energy (negative log probability)"""
+        return -np.log(self.target_dist(position) + 1e-10)
+    
+    def hamiltonian(self, position, momentum):
+        """Hamiltonian"""
+        return self.potential_energy(position) + self.kinetic_energy(momentum)
+    
+    def leapfrog_step(self, position, momentum):
+        """Leapfrog integration step"""
+        # Half step update momentum
+        grad = self.numerical_gradient(position)
+        momentum = momentum - 0.5 * self.step_size * grad
+        
+        # Full step update position
+        position = position + self.step_size * momentum / self.mass
+        
+        # Half step update momentum
+        grad = self.numerical_gradient(position)
+        momentum = momentum - 0.5 * self.step_size * grad
+        
+        return position, momentum
+    
+    def numerical_gradient(self, position, eps=1e-6):
+        """Numerical gradient calculation"""
+        grad = np.zeros_like(position)
+        for i in range(len(position)):
+            pos_plus = position.copy()
+            pos_minus = position.copy()
+            pos_plus[i] += eps
+            pos_minus[i] -= eps
+            grad[i] = (self.potential_energy(pos_plus) - self.potential_energy(pos_minus)) / (2 * eps)
+        return grad
+    
+    def sample(self, n_samples, initial_state, burn_in=1000):
+        current_state = initial_state
+        samples = []
+        accepted = 0
+        
+        for i in range(n_samples + burn_in):
+            # Sample momentum from normal distribution
+            current_momentum = np.random.normal(0, np.sqrt(self.mass), size=current_state.shape)
+            
+            # Leapfrog integration to simulate trajectory
+            proposed_state = current_state.copy()
+            proposed_momentum = current_momentum.copy()
+            
+            for _ in range(self.n_leapfrog):
+                proposed_state, proposed_momentum = self.leapfrog_step(proposed_state, proposed_momentum)
+            
+            # Calculate Hamiltonian
+            current_hamiltonian = self.hamiltonian(current_state, current_momentum)
+            proposed_hamiltonian = self.hamiltonian(proposed_state, -proposed_momentum)  # Momentum reversal
+            
+            # Acceptance probability
+            acceptance_ratio = min(1, np.exp(current_hamiltonian - proposed_hamiltonian))
+            
+            # Accept or reject
+            if np.random.rand() < acceptance_ratio:
+                current_state = proposed_state
+                if i >= burn_in:
+                    accepted += 1
+            
+            if i >= burn_in:
+                samples.append(current_state.copy())
+        
+        acceptance_rate = accepted / n_samples
+        return np.array(samples), acceptance_rate
 
-# 聚合为每个顾客的数据
-customer_df = X.groupby('CustomerID').agg({
-    'Quantity': 'sum',           # 总购买量
-    'UnitPrice': 'mean'          # 平均单价
-}).reset_index()
+class LangevinDynamics:
+    """Langevin Dynamics MCMC"""
+    
+    def __init__(self, target_dist, step_size=0.1, mass=1.0):
+        self.target_dist = target_dist
+        self.step_size = step_size
+        self.mass = mass
+        
+    def potential_energy(self, position):
+        """Potential energy (negative log probability)"""
+        return -np.log(self.target_dist(position) + 1e-10)
+    
+    def numerical_gradient(self, position, eps=1e-6):
+        """Numerical gradient calculation"""
+        grad = np.zeros_like(position)
+        for i in range(len(position)):
+            pos_plus = position.copy()
+            pos_minus = position.copy()
+            pos_plus[i] += eps
+            pos_minus[i] -= eps
+            grad[i] = (self.potential_energy(pos_plus) - self.potential_energy(pos_minus)) / (2 * eps)
+        return grad
+    
+    def sample(self, n_samples, initial_state, burn_in=1000):
+        current_state = initial_state
+        samples = []
+        
+        for i in range(n_samples + burn_in):
+            # Langevin dynamics update
+            grad = self.numerical_gradient(current_state)
+            noise = np.random.normal(0, np.sqrt(2 * self.step_size), size=current_state.shape)
+            
+            current_state = current_state - self.step_size * grad + noise
+            
+            if i >= burn_in:
+                samples.append(current_state.copy())
+        
+        # Langevin dynamics typically has high acceptance rate (close to 1)
+        acceptance_rate = 1.0  # Simplified estimation
+        return np.array(samples), acceptance_rate
 
-# 增加总消费额特征
-customer_df['TotalSpend'] = X.groupby('CustomerID').apply(
-    lambda df: np.sum(df['Quantity'] * df['UnitPrice'])
-).values
+# Testing and comparison
+def main():
+    # Set up target distribution: 2D Gaussian
+    mean = np.array([1.0, -1.0])
+    cov = np.array([[2.0, 0.8], [0.8, 1.5]])
+    target_dist = multivariate_normal(mean, cov)
+    
+    def target_pdf(x):
+        return target_dist.pdf(x)
+    
+    # Parameter settings
+    n_samples = 5000
+    burn_in = 1000
+    initial_state = np.array([0.0, 0.0])
+    
+    # Basic MCMC
+    print("Running Basic MCMC...")
+    basic_mcmc = BasicMCMC(target_pdf, proposal_std=1.0)
+    samples_basic, acc_basic = basic_mcmc.sample(n_samples, initial_state, burn_in)
+    
+    # Hamiltonian Monte Carlo
+    print("Running Hamiltonian Monte Carlo...")
+    hmc = HamiltonianMC(target_pdf, step_size=0.1, n_leapfrog=10)
+    samples_hmc, acc_hmc = hmc.sample(n_samples, initial_state, burn_in)
+    
+    # Langevin Dynamics
+    print("Running Langevin Dynamics...")
+    langevin = LangevinDynamics(target_pdf, step_size=0.01)
+    samples_langevin, acc_langevin = langevin.sample(n_samples, initial_state, burn_in)
+    
+    # Print acceptance rate comparison
+    print("\n=== Acceptance Rate Comparison ===")
+    print(f"Basic MCMC: {acc_basic:.3f}")
+    print(f"HMC: {acc_hmc:.3f}")
+    print(f"Langevin Dynamics: {acc_langevin:.3f}")
 
-# 仅使用数值特征
-features = customer_df[['Quantity', 'UnitPrice', 'TotalSpend']]
-
-# === 3. 数据标准化 ===
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(features)
-
-# === 4. 肘部法则曲线 ===
-inertias = []
-K_range = range(2, 11)
-
-for k in K_range:
-    kmeans = KMeans(n_clusters=k, random_state=42)
-    kmeans.fit(X_scaled)
-    inertias.append(kmeans.inertia_)
-
-plt.figure(figsize=(6, 4))
-plt.plot(K_range, inertias, marker='o')
-plt.xlabel('K')
-plt.ylabel('Inertia')
-plt.title('Elbow Method for K Selection')
-plt.show()
-
-# === 5. 轮廓系数分析 ===
-silhouette_scores = []
-for k in K_range:
-    kmeans = KMeans(n_clusters=k, random_state=42)
-    labels = kmeans.fit_predict(X_scaled)
-    score = silhouette_score(X_scaled, labels)
-    silhouette_scores.append(score)
-
-plt.figure(figsize=(6, 4))
-plt.plot(K_range, silhouette_scores, marker='o', color='orange')
-plt.xlabel('K')
-plt.ylabel('Silhouette Score')
-plt.title('Silhouette Analysis for K Selection')
-plt.show()
-
-# === 计算聚类 ===
-k_final = 4
-kmeans_final = KMeans(n_clusters=k_final, random_state=42)
-customer_df['Cluster'] = kmeans_final.fit_predict(X_scaled)
-
-# === 7. 输出 K=4 的肘部法则结果（Inertia） ===
-inertia_k4 = kmeans_final.inertia_
-print(f"当 K={k_final} 时的 Inertia（肘部法则指标）为: {inertia_k4:.2f}")
-
-# === 8. 输出每个簇的平均特征 ===
-cluster_summary = customer_df.groupby('Cluster')[['Quantity', 'UnitPrice', 'TotalSpend']].mean()
-print("\n各簇的平均特征值：")
-print(cluster_summary)
+if __name__ == "__main__":
+    main()
