@@ -1,6 +1,4 @@
-好的，这是您提供的 PDF 讲座文稿 `lecture_6.2_approximation.pdf` 的逐页翻译。
 
----
 
 ===== Page 1 =====
 

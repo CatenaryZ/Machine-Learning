@@ -219,8 +219,8 @@ MDP由五元组 \((S, A, P, R, \gamma)\) 定义：
 - 分解回报：\( G_t = R_{t+1} + \gamma G_{t+1} \)
 - 取期望：
 
-\[q_\pi(s, a) = \mathbb{E}_\pi[R_{t+1} + \gamma G_{t+1} | S_t = s, A_t = a] \\
-= \mathbb{E}[R_{t+1} | s, a] + \gamma \mathbb{E}_\pi[G_{t+1} | s, a]\]
+$$q_\pi(s, a) = \mathbb{E}_\pi[R_{t+1} + \gamma G_{t+1} | S_t = s, A_t = a] \\
+= \mathbb{E}[R_{t+1} | s, a] + \gamma \mathbb{E}_\pi[G_{t+1} | s, a]$$
 
 ---
 
